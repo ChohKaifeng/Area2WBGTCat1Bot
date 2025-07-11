@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: area2-cat1-bot
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python Area2WBGTCat1Bot.py
+    envVars:
+      - key: TELEGRAM_TOKEN
+        value: YOUR_ACTUAL_BOT_TOKEN
+      - key: WEBHOOK_SECRET
+        value: your-long-random-secret-here
+      - key: RENDER_EXTERNAL_URL
+        value: https://area2wbgtcat1bot.onrender.com
