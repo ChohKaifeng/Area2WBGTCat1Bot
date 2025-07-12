@@ -224,7 +224,7 @@ def fetch_cat1_sector17():
                             if block_end > last_cat1_range[1]:
                                 # Future block extends the alert
                                 msg = (
-                                    f"⚠️ *CAT 1 Extended:*\n"
+                                    f"⚠️⚡ *CAT 1 Extended:*\n"
                                     f"Sector 17 CAT 1 duration extended till {end}. "
                                     f"Stay sheltered until further notice."
                                 )
@@ -247,6 +247,13 @@ def fetch_cat1_sector17():
 
     except Exception as e:
         logging.error(f"Error fetching CAT 1: {e}")
+
+    # Auto-reset last_cat1_range if expired
+    if last_cat1_range:
+        sgt_now = datetime.now(timezone("Asia/Singapore"))
+        if sgt_now > last_cat1_range[1]:
+            logging.info("CAT 1 range expired — resetting last_cat1_range")
+            last_cat1_range = None
 
     return "clear", "✅ Sector 17 is currently clear."
 
@@ -290,12 +297,14 @@ async def broadcast_message(app, text):
 
 # === Scheduled Tasks ===
 async def scheduled_update(app):
+    global last_cat1_range
+
     logging.info("Running scheduled update")
     wbgt_data = calculate_wbgt()
 
     if not wbgt_data:
         return
-    
+
     cat1_status = fetch_cat1_sector17()
     msg = generate_message(wbgt_data, cat1_status)
     await broadcast_message(app, msg)
@@ -310,6 +319,33 @@ async def check_for_changes(app):
     current_zone = get_wbgt_zone(wbgt_data["value"])
     current_cat1 = cat1_status[0]
 
+    # === NEW: Parse new CAT 1 range from message text
+    new_cat1_range = last_cat1_range  # Default: unchanged
+    if current_cat1 == "active":
+        sgt = timezone("Asia/Singapore")
+        sgt_now = datetime.now(sgt)
+        forecast_match = re.search(r"from (\d{4})–(\d{4})", cat1_status[1])
+        active_match = re.search(r"\((\d{4})–(\d{4})\)", cat1_status[1])
+        end_match = re.search(r"till (\d{4})", cat1_status[1])
+
+        # Use whichever exists
+        for match in (forecast_match, active_match, end_match):
+            if match:
+                start_str, end_str = match.groups() if len(match.groups()) == 2 else (None, match.group(1))
+                try:
+                    start_dt = datetime.strptime(start_str or sgt_now.strftime("%H%M"), "%H%M").replace(
+                        year=sgt_now.year, month=sgt_now.month, day=sgt_now.day)
+                    end_dt = datetime.strptime(end_str, "%H%M").replace(
+                        year=sgt_now.year, month=sgt_now.month, day=sgt_now.day)
+                    if end_dt <= start_dt:
+                        end_dt += timedelta(days=1)
+                    start_dt = sgt.localize(start_dt)
+                    end_dt = sgt.localize(end_dt)
+                    new_cat1_range = (start_dt, end_dt)
+                except Exception as e:
+                    logging.warning(f"Unable to parse extended CAT 1 time: {e}")
+                break
+
     # First time: just initialize
     if last_zone is None or last_cat1_status is None:
         last_zone = current_zone
@@ -318,18 +354,19 @@ async def check_for_changes(app):
 
     # Compare with previous state
     zone_changed = current_zone != last_zone
-    cat1_changed = current_cat1 != last_cat1_status
+    cat1_changed = (
+        current_cat1 != last_cat1_status or
+        (current_cat1 == "active" and last_cat1_range and new_cat1_range and new_cat1_range[1] > last_cat1_range[1])
+    )
 
     if zone_changed or cat1_changed:
-        msg_parts = ["*🚨 Immediate Update Detected*\n"]
+        msg_parts = ["*🚨 Immediate Update Detected*"]
 
         if zone_changed:
             wbgt_time = datetime.strptime(wbgt_data["timestamp"], "%Y-%m-%dT%H:%M:%S%z").astimezone(timezone("Asia/Singapore"))
             wbgt = wbgt_data["value"]
             advisory = get_wbgt_advisory(wbgt)
             msg_parts.append(
-                f"*🌤️ Pulau Ubin WBGT Update*\n"
-                f"*Time:* {datetime.now(timezone('Asia/Singapore')).strftime('%d/%m/%Y %H:%M')} Hours\n\n"
                 f"*WBGT STATUS (as of {wbgt_time.strftime('%H:%M')} Hours)*\n"
                 f"*🌡️ Temperature:* {wbgt:.1f}°C ({advisory[0]})\n"
                 f"*🧑‍🔧 Work-Rest Cycle:* {advisory[1]}\n"
@@ -346,6 +383,7 @@ async def check_for_changes(app):
         # Update last known states
         last_zone = current_zone
         last_cat1_status = current_cat1
+        last_cat1_range = new_cat1_range
 
 # === Telegram Commands ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
