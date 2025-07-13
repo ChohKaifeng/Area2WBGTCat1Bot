@@ -245,12 +245,16 @@ def fetch_cat1_sector17():
     except Exception as e:
         logging.error(f"Error fetching CAT 1: {e}")
 
-    # Auto-reset last_cat1_range if expired
+    # Respect last forecast if still within range
+    sgt_now = datetime.now(timezone("Asia/Singapore"))
     if last_cat1_range:
-        sgt_now = datetime.now(timezone("Asia/Singapore"))
-        if sgt_now > last_cat1_range[1]:
-            logging.info("CAT 1 range expired — resetting last_cat1_range")
-            last_cat1_range = None
+        if sgt_now <= last_cat1_range[1]:
+            logging.info("No new forecast, but still within previous CAT 1 range — maintaining forecast status")
+            return "active", f"⚠️ CAT 1 Forecast still active (until {last_cat1_range[1].strftime('%H%M')}). Remain alert."
+
+        # Expired — reset
+        logging.info("CAT 1 range expired — resetting last_cat1_range")
+        last_cat1_range = None
 
     return "clear", "✅ Sector 17 is currently clear."
 
@@ -414,7 +418,7 @@ async def now(update: Update, context: ContextTypes.DEFAULT_TYPE):
 scheduler = AsyncIOScheduler()
 async def post_init(app):
     scheduler.add_job(scheduled_update, args=[app], trigger="cron", minute="*/10")
-    scheduler.add_job(check_for_changes, args=[app], trigger="interval", minutes=2)
+    scheduler.add_job(check_for_changes, args=[app], trigger="interval", seconds=150)
     scheduler.start()
     logging.info("Scheduler started")
 
