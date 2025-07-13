@@ -172,10 +172,11 @@ def fetch_cat1_sector17():
         resp = requests.get('https://t.me/s/Lightningrisk', timeout=10)
         soup = BeautifulSoup(resp.text, 'html.parser')
         last_msg = soup.select_one('.tgme_widget_message_wrap .tgme_widget_message_text:last-child')
-        text = last_msg.get_text().replace("\u200e", "")
-        
         if not last_msg:
+            logging.warning("No message found in Lightningrisk channel.")
             return "clear", "✅ Sector 17 is currently clear."
+
+        text = last_msg.get_text().replace("\u200e", "")
 
         matches = re.findall(r'\((\d{4})-(\d{4})\)\s*([^\n()]+)', text)
         sgt = timezone("Asia/Singapore")
