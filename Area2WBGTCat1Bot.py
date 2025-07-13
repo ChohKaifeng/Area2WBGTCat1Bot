@@ -5,6 +5,7 @@ from flask import Flask
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from pytz import timezone
+from functools import lru_cache
 
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
@@ -297,27 +298,33 @@ async def scheduled_update(app):
     global last_cat1_range
 
     logging.info("Running scheduled update")
-    wbgt_data = calculate_wbgt()
+
+    loop = asyncio.get_event_loop()
+    wbgt_task = loop.run_in_executor(None, calculate_wbgt)
+    cat1_task = loop.run_in_executor(None, fetch_cat1_sector17)
+    wbgt_data, cat1_status = await asyncio.gather(wbgt_task, cat1_task)
 
     if not wbgt_data:
         return
 
-    cat1_status = fetch_cat1_sector17()
     msg = generate_message(wbgt_data, cat1_status)
     await broadcast_message(app, msg)
 
 async def check_for_changes(app):
     global last_zone, last_cat1_status, last_cat1_range
-    wbgt_data = calculate_wbgt()
+
+    loop = asyncio.get_event_loop()
+    wbgt_task = loop.run_in_executor(None, calculate_wbgt)
+    cat1_task = loop.run_in_executor(None, fetch_cat1_sector17)
+    wbgt_data, cat1_status = await asyncio.gather(wbgt_task, cat1_task)
+
     if not wbgt_data:
         return
-    
-    cat1_status = fetch_cat1_sector17()
+
     current_zone = get_wbgt_zone(wbgt_data["value"])
     current_cat1 = cat1_status[0]
 
-    # === NEW: Parse new CAT 1 range from message text
-    new_cat1_range = last_cat1_range  # Default: unchanged
+    new_cat1_range = last_cat1_range
     if current_cat1 == "active":
         sgt = timezone("Asia/Singapore")
         sgt_now = datetime.now(sgt)
@@ -325,7 +332,6 @@ async def check_for_changes(app):
         active_match = re.search(r"\((\d{4})–(\d{4})\)", cat1_status[1])
         end_match = re.search(r"till (\d{4})", cat1_status[1])
 
-        # Use whichever exists
         for match in (forecast_match, active_match, end_match):
             if match:
                 start_str, end_str = match.groups() if len(match.groups()) == 2 else (None, match.group(1))
@@ -343,13 +349,12 @@ async def check_for_changes(app):
                     logging.warning(f"Unable to parse extended CAT 1 time: {e}")
                 break
 
-    # First time: just initialize
     if last_zone is None or last_cat1_status is None:
         last_zone = current_zone
         last_cat1_status = current_cat1
+        last_cat1_range = new_cat1_range
         return
 
-    # Compare with previous state
     zone_changed = current_zone != last_zone
     cat1_changed = (
         current_cat1 != last_cat1_status or
@@ -373,11 +378,9 @@ async def check_for_changes(app):
         if cat1_changed:
             msg_parts.append(f"\n*CAT 1 STATUS*\n{cat1_status[1]}")
 
-        # Send combined message
         msg = "\n".join(msg_parts)
         await broadcast_message(app, msg)
 
-        # Update last known states
         last_zone = current_zone
         last_cat1_status = current_cat1
         last_cat1_range = new_cat1_range
