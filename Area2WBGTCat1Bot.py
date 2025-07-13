@@ -1,9 +1,4 @@
-import os
-import re
-import asyncio
-import logging
-import threading
-import requests
+import os, re, asyncio, logging, threading, requests
 from datetime import datetime, timedelta, timezone as dt_timezone
 
 from flask import Flask
@@ -292,8 +287,10 @@ async def broadcast_message(app, text):
         logging.info("No subscribers to broadcast to.")
         return
 
-    for chat_id in subscribers:
-        await safe_send(app.bot, chat_id, text)
+    await asyncio.gather(*[
+        safe_send(app.bot, chat_id, text)
+        for chat_id in subscribers
+    ])
 
 # === Scheduled Tasks ===
 async def scheduled_update(app):
