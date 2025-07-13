@@ -171,7 +171,7 @@ def fetch_cat1_sector17():
     try:
         resp = requests.get('https://t.me/s/Lightningrisk', timeout=10)
         soup = BeautifulSoup(resp.text, 'html.parser')
-        last_msg = soup.select('.tgme_widget_message_wrap .tgme_widget_message_text')[-1]
+        last_msg = soup.select_one('.tgme_widget_message_wrap .tgme_widget_message_text:last-child')
         text = last_msg.get_text().replace("\u200e", "")
         
         if not last_msg:
