@@ -310,7 +310,7 @@ async def scheduled_update(app):
     await broadcast_message(app, msg)
 
 async def check_for_changes(app):
-    global last_zone, last_cat1_status
+    global last_zone, last_cat1_status, last_cat1_range
     wbgt_data = calculate_wbgt()
     if not wbgt_data:
         return
