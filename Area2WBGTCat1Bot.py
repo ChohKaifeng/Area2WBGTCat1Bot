@@ -171,7 +171,7 @@ def fetch_cat1_sector17():
     try:
         resp = requests.get('https://t.me/s/Lightningrisk', timeout=10)
         soup = BeautifulSoup(resp.text, 'html.parser')
-        last_msg = soup.select_one('.tgme_widget_message_wrap .tgme_widget_message_text:last-child')
+        last_msg = soup.select('.tgme_widget_message_wrap .tgme_widget_message_text')[-1]
         if not last_msg:
             logging.warning("No message found in Lightningrisk channel.")
             return "clear", "✅ Sector 17 is currently clear."
