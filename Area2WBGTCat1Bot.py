@@ -7,6 +7,7 @@ from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from pytz import timezone
 from functools import lru_cache
+from state_manager import load_state, save_state
 
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
@@ -22,10 +23,10 @@ WBGT_STATION_ID = "S106"  # Pulau Ubin
 
 # === State Trackers ===
 init_db()
-
-last_zone = None
-last_cat1_status = None
-last_cat1_range = None
+state = load_state()
+last_zone = state["last_zone"]
+last_cat1_status = state["last_cat1_status"]
+last_cat1_range = state["last_cat1_range"]
 
 # === Logging ===
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -215,6 +216,8 @@ def fetch_cat1_sector17():
                                 f"Head to the nearest shelter!"
                             )
                         last_cat1_range = (block_start, block_end)
+                        state["last_cat1_range"] = last_cat1_range
+                        save_state(state)
                         return "active", msg
 
                     elif sgt_now < block_start:
@@ -227,11 +230,15 @@ def fetch_cat1_sector17():
                                     f"Stay sheltered until further notice."
                                 )
                                 last_cat1_range = (block_start, block_end)
+                                state["last_cat1_range"] = last_cat1_range
+                                save_state(state)
                                 return "active", msg
                             else:
                                 continue  # Still within previous block, no update
                         else:
                             last_cat1_range = (block_start, block_end)
+                            state["last_cat1_range"] = last_cat1_range
+                            save_state(state)
                             msg = (
                                 f"⚠️ *CAT 1 Forecast:*\n"
                                 f"Sector 17 expected to enter CAT 1 from {start}–{end}. "
@@ -256,7 +263,8 @@ def fetch_cat1_sector17():
         # Expired — reset
         logging.info("CAT 1 range expired — resetting last_cat1_range")
         last_cat1_range = None
-
+        state["last_cat1_range"] = None
+        save_state(state)
     return "clear", "✅ Sector 17 is currently clear."
 
 def generate_message(wbgt_data, cat1_status_msg):
@@ -359,6 +367,10 @@ async def check_for_changes(app):
         last_zone = current_zone
         last_cat1_status = current_cat1
         last_cat1_range = new_cat1_range
+        state["last_zone"] = last_zone
+        state["last_cat1_status"] = last_cat1_status
+        state["last_cat1_range"] = last_cat1_range
+        save_state(state)
         return
 
     zone_changed = current_zone != last_zone
@@ -387,9 +399,10 @@ async def check_for_changes(app):
         msg = "\n".join(msg_parts)
         await broadcast_message(app, msg)
 
-        last_zone = current_zone
-        last_cat1_status = current_cat1
-        last_cat1_range = new_cat1_range
+        state["last_zone"] = last_zone
+        state["last_cat1_status"] = last_cat1_status
+        state["last_cat1_range"] = last_cat1_range
+        save_state(state)
 
 # === Telegram Commands ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
