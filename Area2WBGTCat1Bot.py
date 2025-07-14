@@ -447,7 +447,7 @@ if __name__ == "__main__":
     # Start Flask in background
     threading.Thread(target=run_flask, daemon=True).start()
 
-    if os.environ.get("IS_MAIN_PROCESS") == 1:
+    if os.environ.get("IS_MAIN_PROCESS") == "1":
         # Start Telegram bot and scheduler
         print("The main instance is running")
         telegram_main()
