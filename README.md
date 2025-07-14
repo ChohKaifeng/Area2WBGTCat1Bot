@@ -17,6 +17,10 @@ This passion project was built for NPCC Group Instructors (GIs) to **enhance cad
   - Detects CAT 1 status changes, activations, or extensions
   - Sends an *🚨 Immediate Update* if either status changes
 - 📢 **Scheduled Updates** (every 10 minutes): Always posts the current WBGT zone and CAT 1 status.
+- 🩺 **First Aid SOPs**: Provides visual and text-based First Aid procedures for common ATC emergencies.
+- 🏷️ **Medical Tagging Guide**: Shows tagging criteria and colour codes for cadets with medical conditions.
+- 🚨 **Man-Down Protocol**: Shares AVPU scale and response steps if a cadet becomes unresponsive.
+- 🔥 **Heat Injury Management**: Highlights symptoms and immediate actions for suspected heat exhaustion/stroke.
 
 ### 📬 Telegram Commands
 
@@ -25,6 +29,10 @@ This passion project was built for NPCC Group Instructors (GIs) to **enhance cad
 | `/start`  | Subscribe to automatic updates                   |
 | `/stop`   | Unsubscribe from updates                         |
 | `/now`    | Get the current WBGT and CAT 1 status instantly  |
+| `/firstaidsop`   | View First Aid SOP images                    |
+| `/medicaltagging`| Medical tagging reference                    |
+| `/mandowndrill`  | Man-down protocol & AVPU scale               |
+| `/heatinjury`    | Signs & First Aid for Heat Injury            |
 
 ## 💬 Message Logic
 
