@@ -1,9 +1,11 @@
 import sqlite3
 import os
+import json
 
-DB_PATH = "data/subscribers.db"
+DB_PATH = "data/data.db"
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
+# === Initialization ===
 def init_db():
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
@@ -14,6 +16,16 @@ def init_db():
         """)
         conn.commit()
 
+def init_state_db():
+    with sqlite3.connect(DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute('''CREATE TABLE IF NOT EXISTS state (
+                    key TEXT PRIMARY KEY,
+                    value TEXT
+                )''')
+        conn.commit()
+
+# === Subscriber Logic ===
 def add_subscriber(chat_id):
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
@@ -31,3 +43,17 @@ def get_all_subscribers():
         cursor = conn.cursor()
         cursor.execute("SELECT chat_id FROM subscribers")
         return {row[0] for row in cursor.fetchall()}
+
+# === State Logic ===
+def get_state(key):
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT value FROM state WHERE key = ?", (key,))
+        row = cursor.fetchone()
+        return json.loads(row[0]) if row else None
+
+def set_state(key, value):
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute("REPLACE INTO state (key, value) VALUES (?, ?)", (key, json.dumps(value)))
+        conn.commit()

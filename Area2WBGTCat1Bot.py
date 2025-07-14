@@ -7,14 +7,13 @@ from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from pytz import timezone
 from functools import lru_cache
-from state_manager import load_state, save_state
 
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from telegram.error import TimedOut, NetworkError, RetryAfter
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from database import init_db, add_subscriber, remove_subscriber, get_all_subscribers
+from database import init_db, init_state_db, add_subscriber, remove_subscriber, get_all_subscribers, get_state, set_state
 
 # === Configuration ===
 load_dotenv()
@@ -23,10 +22,22 @@ WBGT_STATION_ID = "S106"  # Pulau Ubin
 
 # === State Trackers ===
 init_db()
-state = load_state()
-last_zone = state["last_zone"]
-last_cat1_status = state["last_cat1_status"]
-last_cat1_range = state["last_cat1_range"]
+init_state_db()
+last_zone = get_state("last_zone")
+last_cat1_status = get_state("last_cat1_status")
+last_cat1_range = get_state("last_cat1_range")
+
+if last_zone is None:
+    last_zone = "Green"
+    set_state("last_zone", last_zone)
+
+if last_cat1_status is None:
+    last_cat1_status = "clear"
+    set_state("last_cat1_status", last_cat1_status)
+
+if last_cat1_range is None:
+    last_cat1_range = None
+    set_state("last_cat1_range", last_cat1_range)
 
 # === Logging ===
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -168,7 +179,7 @@ def get_wbgt_advisory(wbgt):
 
 # === CAT 1 Forecast ===
 def fetch_cat1_sector17():
-    global last_cat1_range
+    last_cat1_range = get_state("last_cat1_range")
 
     try:
         resp = requests.get('https://t.me/s/Lightningrisk', timeout=10)
@@ -181,6 +192,10 @@ def fetch_cat1_sector17():
         text = last_msg.get_text().replace("\u200e", "")
 
         matches = re.findall(r'\((\d{4})-(\d{4})\)\s*([^\n()]+)', text)
+        if not matches:
+            logging.warning("CAT 1 parsing failed. Message: %s", text)
+            return "clear", "✅ Sector 17 is currently clear."
+
         sgt = timezone("Asia/Singapore")
         sgt_now = datetime.now(sgt)
 
@@ -202,7 +217,6 @@ def fetch_cat1_sector17():
                     block_end = sgt.localize(block_end_naive)
 
                     if block_start <= sgt_now <= block_end:
-                        # Still active — treat as alert
                         if last_cat1_range and block_start == last_cat1_range[0] and block_end > last_cat1_range[1]:
                             msg = (
                                 f"⚠️ *CAT 1 Extended:*\n"
@@ -215,43 +229,44 @@ def fetch_cat1_sector17():
                                 f"Sector 17 currently under CAT 1 ({start}–{end}). "
                                 f"Head to the nearest shelter!"
                             )
-                        last_cat1_range = (block_start, block_end)
-                        state["last_cat1_range"] = last_cat1_range
-                        save_state(state)
+                        set_state("last_cat1_range", (block_start, block_end))
+                        set_state("last_cat1_status", "active")
                         return "active", msg
 
                     elif sgt_now < block_start:
                         if last_cat1_range and block_start <= last_cat1_range[1]:
                             if block_end > last_cat1_range[1]:
-                                # Future block extends the alert
                                 msg = (
                                     f"⚠️⚡ *CAT 1 Extended:*\n"
                                     f"Sector 17 CAT 1 duration extended till {end}. "
                                     f"Stay sheltered until further notice."
                                 )
-                                last_cat1_range = (block_start, block_end)
-                                state["last_cat1_range"] = last_cat1_range
-                                save_state(state)
+                                set_state("last_cat1_range", (block_start, block_end))
+                                set_state("last_cat1_status", "active")
                                 return "active", msg
                             else:
-                                continue  # Still within previous block, no update
+                                continue
                         else:
-                            last_cat1_range = (block_start, block_end)
-                            state["last_cat1_range"] = last_cat1_range
-                            save_state(state)
                             msg = (
                                 f"⚠️ *CAT 1 Forecast:*\n"
                                 f"Sector 17 expected to enter CAT 1 from {start}–{end}. "
                                 f"Prepare to head to shelter."
                             )
+                            set_state("last_cat1_range", (block_start, block_end))
+                            set_state("last_cat1_status", "active")
                             return "active", msg
 
                 except ValueError:
                     logging.warning(f"Invalid time format in block: {start}-{end}")
                     continue
 
+        set_state("last_cat1_status", "clear")
+        return "clear", "✅ Sector 17 is currently clear."
+
     except Exception as e:
         logging.error(f"Error fetching CAT 1: {e}")
+        return "clear", "⚠️ Failed to fetch CAT 1 status."
+
 
     # Respect last forecast if still within range
     sgt_now = datetime.now(timezone("Asia/Singapore"))
@@ -263,8 +278,7 @@ def fetch_cat1_sector17():
         # Expired — reset
         logging.info("CAT 1 range expired — resetting last_cat1_range")
         last_cat1_range = None
-        state["last_cat1_range"] = None
-        save_state(state)
+        set_state("last_cat1_status", last_cat1_status)
     return "clear", "✅ Sector 17 is currently clear."
 
 def generate_message(wbgt_data, cat1_status_msg):
@@ -367,10 +381,9 @@ async def check_for_changes(app):
         last_zone = current_zone
         last_cat1_status = current_cat1
         last_cat1_range = new_cat1_range
-        state["last_zone"] = last_zone
-        state["last_cat1_status"] = last_cat1_status
-        state["last_cat1_range"] = last_cat1_range
-        save_state(state)
+        set_state("last_zone", last_zone)
+        set_state("last_cat1_status", last_cat1_status)
+        set_state("last_cat1_range", last_cat1_range)
         return
 
     zone_changed = current_zone != last_zone
@@ -399,10 +412,12 @@ async def check_for_changes(app):
         msg = "\n".join(msg_parts)
         await broadcast_message(app, msg)
 
-        state["last_zone"] = last_zone
-        state["last_cat1_status"] = last_cat1_status
-        state["last_cat1_range"] = last_cat1_range
-        save_state(state)
+        last_zone = current_zone
+        last_cat1_status = current_cat1
+        last_cat1_range = new_cat1_range
+        set_state("last_zone", last_zone)
+        set_state("last_cat1_status", last_cat1_status)
+        set_state("last_cat1_range", last_cat1_range)
 
 # === Telegram Commands ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -418,13 +433,15 @@ async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🚫 Unsubscribed from alerts.")
 
 async def now(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    wbgt_data = calculate_wbgt()
+    loop = asyncio.get_event_loop()
+    wbgt_task = loop.run_in_executor(None, calculate_wbgt)
+    cat1_task = loop.run_in_executor(None, fetch_cat1_sector17)
+    wbgt_data, cat1 = await asyncio.gather(wbgt_task, cat1_task)
 
     if not wbgt_data:
         await update.message.reply_text("⚠️ Could not retrieve WBGT data.")
         return
-    
-    cat1 = fetch_cat1_sector17()
+
     msg = generate_message(wbgt_data, cat1)
     await update.message.reply_text(msg, parse_mode="Markdown")
 
