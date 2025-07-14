@@ -445,6 +445,90 @@ async def now(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = generate_message(wbgt_data, cat1)
     await update.message.reply_text(msg, parse_mode="Markdown")
 
+async def first_aid_sop(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    image_caption_pairs = [
+        (
+            os.path.join("img", "UnwellCadetSOPDay.jpg"),
+            "🌞 *Unwell Cadet SOP (Day)*\nEnsure cadets rest in the designated First Aid area and are closely monitored during daylight activities."
+        ),
+        (
+            os.path.join("img", "UnwellCadetSOPNight.jpg"),
+            "🌙 *Unwell Cadet SOP (Night)*\nCadets should be escorted to a safe, lit area and remain supervised overnight if symptoms persist."
+        ),
+        (
+            os.path.join("img", "UnwellCadetSOPLandEx.jpg"),
+            "🧭 *Unwell Cadet SOP (Land Ex)*\nDuring Land Exploration, follow safety protocols immediately and evacuate if symptoms are severe."
+        ),
+        (
+            os.path.join("img", "FARoomCriteria.jpg"),
+            "🏥 *First Aid Room Criteria*\nCheck that all requirements for a designated First Aid Room are met and maintained throughout the camp."
+        ),
+    ]
+
+    for img_path, caption in image_caption_pairs:
+        if not os.path.exists(img_path):
+            await update.message.reply_text(f"⚠️ Missing image: {os.path.basename(img_path)}")
+            continue
+
+        with open(img_path, "rb") as photo:
+            await update.message.reply_photo(photo=photo, caption=caption, parse_mode="Markdown")
+
+async def medical_tagging(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    img_path = os.path.join("img", "MedicalTagging.jpg")
+
+    if not os.path.exists(img_path):
+        await update.message.reply_text("⚠️ Medical Tagging image not found.")
+        return
+
+    caption = (
+        "*🏷️ Medical Tagging Reference Guide*\n\n"
+        "*Colour* | *Medical Condition*\n"
+        "🟡 Yellow - Asthma / Respiratory Condition\n"
+        "🔴 Red - History of Current Heat Injury\n"
+        "🔵 Blue - Allergy\n"
+        "⚪ White - Light Duty (No Vigorous Activity)"
+    )
+
+    with open(img_path, "rb") as photo:
+        await update.message.reply_photo(photo, caption=caption, parse_mode="Markdown")
+
+async def mandown_drill(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    caption = (
+        "*🚨 Cadets Man-Down Protocol*\n\n"
+        "*AVPU Scale:*\n"
+        "• *Alert* - Cadet is *not alert* at all\n"
+        "• *Verbal* - Cadet is *not able to respond* to questions at all (Time, Place, Person)\n"
+        "• *Pain* - Cadet is *not able to respond* to any pain stimuli (e.g., pat on arm)\n"
+        "• *Unresponsive* - Cadet is *not responsive* at all\n\n"
+        "*🔴 REPORT IMMEDIATELY IF CADETS FAIL ANY OF THE SCALE*"
+    )
+
+    await update.message.reply_text(caption, parse_mode="Markdown")
+
+async def heat_injury(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    caption = (
+        "*🔥 Heat Injury Protocol*\n\n"
+        "*Common Signs & Symptoms:*\n"
+        "• *Extreme fatigue* - Unable to continue physical activity\n"
+        "• *Hot and flushing* (redness) of skin\n"
+        "• Severe muscle *cramps*\n"
+        "• *Nausea*, vomiting, *headache*, *giddiness*, and/or *fainting spells*\n"
+        "• Change in *mental status* - Confusion, disorientation, agitation, seizures, unconscious or comatose\n\n"
+        "*First Aid Measures:*\n"
+        "1. *Resuscitate* - Perform CPR if no breathing or heartbeat\n"
+        "2. *Recognize Symptoms* - Early detection prevents escalation\n"
+        "3. *Rest in the Shade* - Remove casualty from activity\n"
+        "4. *Reduce Body Temp* - Pour water, fan casualty, apply ice packs (if available)\n"
+        "5. *Rehydrate* - If conscious, give fluids. If not, start IV fluids\n"
+        "6. *Rush to Medical Facility* if:\n"
+        "   • Life/limb-threatening condition\n"
+        "   • V, P, or U on *AVPU* scale\n"
+        "   • Suspected heat-related injury\n"
+        "   • Temp ≥ *38°C* during training"
+    )
+
+    await update.message.reply_text(caption, parse_mode="Markdown")
+
 # === Scheduler Setup ===
 scheduler = AsyncIOScheduler()
 async def post_init(app):
@@ -459,6 +543,11 @@ def telegram_main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("stop", stop))
     app.add_handler(CommandHandler("now", now))
+    app.add_handler(CommandHandler("firstaidsop", first_aid_sop))
+    app.add_handler(CommandHandler("medicaltagging", medical_tagging))
+    app.add_handler(CommandHandler("mandowndrill", mandown_drill))
+    app.add_handler(CommandHandler("heatinjury", heat_injury))
+
     app.run_polling()
 
 # === Flask (for Render uptime) ===
