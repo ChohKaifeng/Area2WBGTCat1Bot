@@ -1,4 +1,5 @@
-import os, re, asyncio, logging, threading, requests
+import os, re, asyncio, logging, threading, requests, nest_asyncio
+
 from datetime import datetime, timedelta, timezone as dt_timezone
 
 from flask import Flask
@@ -441,11 +442,14 @@ def run_flask():
 
 # === Final Startup ===
 if __name__ == "__main__":
-    import nest_asyncio
     nest_asyncio.apply()
 
     # Start Flask in background
     threading.Thread(target=run_flask, daemon=True).start()
 
-    # Start Telegram bot and scheduler
-    telegram_main()
+    if os.environ.get("IS_MAIN_PROCESS") == 1:
+        # Start Telegram bot and scheduler
+        print("The main instance is running")
+        telegram_main()
+    else:
+        print("Skipping polling: Not the main instance")
