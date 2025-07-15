@@ -533,7 +533,7 @@ async def heat_injury(update: Update, context: ContextTypes.DEFAULT_TYPE):
 scheduler = AsyncIOScheduler()
 async def post_init(app):
     scheduler.add_job(scheduled_update, args=[app], trigger="cron", minute="*/10")
-    scheduler.add_job(check_for_changes, args=[app], trigger="interval", seconds=150)
+    scheduler.add_job(check_for_changes, args=[app], trigger="cron", minute="*/2")
     scheduler.start()
     logging.info("Scheduler started")
 
