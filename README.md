@@ -16,7 +16,7 @@ This passion project was built for NPCC Group Instructors (GIs) to **enhance cad
   - Every 5 Minutes: Detects WBGT zone changes (🟩 Green, 🟨 Yellow, 🟥 Red, ⬛ Black)
   - Every 2 Minutes: Detects CAT 1 status changes, activations, or extensions
   - Sends an *🚨 Immediate Update* if either status changes
-- 📢 **Scheduled Updates** (every 15 minutes): Always posts the current WBGT zone and CAT 1 status.
+- 📢 **Scheduled Updates** (every 20 minutes): Always posts the current WBGT zone and CAT 1 status.
 - 🩺 **First Aid SOPs**: Provides visual and text-based First Aid procedures for common ATC emergencies.
 - 🏷️ **Medical Tagging Guide**: Shows tagging criteria and colour codes for cadets with medical conditions.
 - 🚨 **Man-Down Protocol**: Shares AVPU scale and response steps if a cadet becomes unresponsive.
