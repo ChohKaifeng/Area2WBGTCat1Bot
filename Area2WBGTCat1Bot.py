@@ -338,21 +338,47 @@ async def scheduled_update(app):
     msg = generate_message(wbgt_data, cat1_status)
     await broadcast_message(app, msg)
 
-async def check_for_changes(app):
-    global last_zone, last_cat1_status, last_cat1_range
+async def check_wbgt_changes(app):
+    global last_zone
 
     loop = asyncio.get_event_loop()
-    wbgt_task = loop.run_in_executor(None, calculate_wbgt)
-    cat1_task = loop.run_in_executor(None, fetch_cat1_sector17)
-    wbgt_data, cat1_status = await asyncio.gather(wbgt_task, cat1_task)
-
+    wbgt_data = await loop.run_in_executor(None, calculate_wbgt)
     if not wbgt_data:
         return
 
     current_zone = get_wbgt_zone(wbgt_data["value"])
-    current_cat1 = cat1_status[0]
 
+    if last_zone is None:
+        last_zone = current_zone
+        set_state("last_zone", last_zone)
+        return
+
+    if current_zone != last_zone:
+        wbgt_time = datetime.strptime(wbgt_data["timestamp"], "%Y-%m-%dT%H:%M:%S%z").astimezone(timezone("Asia/Singapore"))
+        wbgt = wbgt_data["value"]
+        advisory = get_wbgt_advisory(wbgt)
+
+        msg = (
+            "*🚨 Immediate Update Detected*\n"
+            f"*WBGT STATUS (as of {wbgt_time.strftime('%H:%M')} Hours)*\n"
+            f"*🌡️ Temperature:* {wbgt:.1f}°C ({advisory[0]})\n"
+            f"*🧑‍🔧 Work-Rest Cycle:* {advisory[1]}\n"
+            f"*💧 Advisory:* {advisory[2]}"
+        )
+
+        await broadcast_message(app, msg)
+        last_zone = current_zone
+        set_state("last_zone", last_zone)
+
+async def check_cat1_changes(app):
+    global last_cat1_status, last_cat1_range
+
+    loop = asyncio.get_event_loop()
+    cat1_status = await loop.run_in_executor(None, fetch_cat1_sector17)
+
+    current_cat1 = cat1_status[0]
     new_cat1_range = last_cat1_range
+
     if current_cat1 == "active":
         sgt = timezone("Asia/Singapore")
         sgt_now = datetime.now(sgt)
@@ -377,45 +403,27 @@ async def check_for_changes(app):
                     logging.warning(f"Unable to parse extended CAT 1 time: {e}")
                 break
 
-    if last_zone is None or last_cat1_status is None:
-        last_zone = current_zone
+    if last_cat1_status is None:
         last_cat1_status = current_cat1
         last_cat1_range = new_cat1_range
-        set_state("last_zone", last_zone)
         set_state("last_cat1_status", last_cat1_status)
         set_state("last_cat1_range", last_cat1_range)
         return
 
-    zone_changed = current_zone != last_zone
     cat1_changed = (
         current_cat1 != last_cat1_status or
         (current_cat1 == "active" and last_cat1_range and new_cat1_range and new_cat1_range[1] > last_cat1_range[1])
     )
 
-    if zone_changed or cat1_changed:
-        msg_parts = ["*🚨 Immediate Update Detected*"]
+    if cat1_changed:
+        msg = (
+            "*🚨 Immediate Update Detected*\n"
+            f"\n*CAT 1 STATUS*\n{cat1_status[1]}"
+        )
 
-        if zone_changed:
-            wbgt_time = datetime.strptime(wbgt_data["timestamp"], "%Y-%m-%dT%H:%M:%S%z").astimezone(timezone("Asia/Singapore"))
-            wbgt = wbgt_data["value"]
-            advisory = get_wbgt_advisory(wbgt)
-            msg_parts.append(
-                f"*WBGT STATUS (as of {wbgt_time.strftime('%H:%M')} Hours)*\n"
-                f"*🌡️ Temperature:* {wbgt:.1f}°C ({advisory[0]})\n"
-                f"*🧑‍🔧 Work-Rest Cycle:* {advisory[1]}\n"
-                f"*💧 Advisory:* {advisory[2]}\n"
-            )
-
-        if cat1_changed:
-            msg_parts.append(f"\n*CAT 1 STATUS*\n{cat1_status[1]}")
-
-        msg = "\n".join(msg_parts)
         await broadcast_message(app, msg)
-
-        last_zone = current_zone
         last_cat1_status = current_cat1
         last_cat1_range = new_cat1_range
-        set_state("last_zone", last_zone)
         set_state("last_cat1_status", last_cat1_status)
         set_state("last_cat1_range", last_cat1_range)
 
@@ -533,7 +541,8 @@ async def heat_injury(update: Update, context: ContextTypes.DEFAULT_TYPE):
 scheduler = AsyncIOScheduler()
 async def post_init(app):
     scheduler.add_job(scheduled_update, args=[app], trigger="cron", minute="*/10")
-    scheduler.add_job(check_for_changes, args=[app], trigger="cron", minute="2-59/2")
+    scheduler.add_job(check_wbgt_changes, args=[app], trigger="cron", minute="*/5")  # every 5 mins
+    scheduler.add_job(check_cat1_changes, args=[app], trigger="cron", minute="*/2")  # every 2 mins
     scheduler.start()
     logging.info("Scheduler started")
 
