@@ -12,9 +12,9 @@ This passion project was built for NPCC Group Instructors (GIs) to **enhance cad
 - 🧠 **Dynamic Calibration** against official NEA WBGT stations: **Changi (S124)**, **Clementi (S130)**, and **Choa Chu Kang (S126)** for accurate zone estimation.
 - ⚠️ **Fallback Mechanism**: Automatically uses Changi's data if Pulau Ubin readings are unavailable.
 - ⚡ **CAT 1 Detection** for **Sector 17** by scraping the latest lightning forecast updates from [@ArmyCAT1](https://t.me/Lightningrisk).
-- 🔄 **Instant Change Detection** :
-  - Every 5 Minutes: Detects WBGT zone changes (🟩 Green, 🟨 Yellow, 🟥 Red, ⬛ Black)
-  - Every 2 Minutes: Detects CAT 1 status changes, activations, or extensions
+- 🔄 **Instant Change Detection** (Every 2 Minutes) :
+  - Detects WBGT zone changes (🟩 Green, 🟨 Yellow, 🟥 Red, ⬛ Black)
+  - Detects CAT 1 status changes, activations, or extensions
   - Sends an *🚨 Immediate Update* if either status changes
 - 📢 **Scheduled Updates** (every 20 minutes): Always posts the current WBGT zone and CAT 1 status.
 - 🩺 **First Aid SOPs**: Provides visual and text-based First Aid procedures for common ATC emergencies.
