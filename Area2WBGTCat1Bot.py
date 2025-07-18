@@ -553,7 +553,7 @@ async def post_init(app):
         return wrapper
 
     scheduler.add_job(scheduled_update, args=[app], trigger="cron", minute="5,25,45")
-    scheduler.add_job(skip_if_recent(check_wbgt_changes, 300, app), trigger="cron", minute="*/5")
+    scheduler.add_job(skip_if_recent(check_wbgt_changes, 120, app), trigger="cron", minute="*/2")
     scheduler.add_job(check_cat1_changes, args=[app], trigger="cron", minute="*/2")
     scheduler.start()
     logging.info("Scheduler started")
