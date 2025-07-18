@@ -26,7 +26,6 @@ init_state_db()
 last_zone = get_state("last_zone")
 last_cat1_status = get_state("last_cat1_status")
 last_cat1_range = get_state("last_cat1_range")
-last_sent_wbgt_time = None  # global tracker
 
 if last_zone is None:
     last_zone = "Green"
@@ -338,7 +337,6 @@ async def scheduled_update(app):
 
     msg = generate_message(wbgt_data, cat1_status)
     await broadcast_message(app, msg)
-    last_sent_wbgt_time = datetime.now(timezone("Asia/Singapore"))
 
 async def check_wbgt_changes(app):
     global last_zone
@@ -542,19 +540,9 @@ async def heat_injury(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # === Scheduler Setup ===
 scheduler = AsyncIOScheduler()
 async def post_init(app):
-    def skip_if_recent(task_func, interval_seconds, *args):
-        async def wrapper():
-            global last_sent_wbgt_time
-            now = datetime.now(timezone("Asia/Singapore"))
-            if last_sent_wbgt_time and (now - last_sent_wbgt_time).total_seconds() < interval_seconds:
-                logging.info(f"⏩ Skipping {task_func.__name__} – last WBGT sent {(now - last_sent_wbgt_time).seconds}s ago")
-                return
-            await task_func(*args)
-        return wrapper
-
     scheduler.add_job(scheduled_update, args=[app], trigger="cron", minute="5,25,45")
-    scheduler.add_job(skip_if_recent(check_wbgt_changes, 120, app), trigger="cron", minute="*/2")
-    scheduler.add_job(check_cat1_changes, args=[app], trigger="cron", minute="*/2")
+    scheduler.add_job(check_wbgt_changes, args=[app], trigger="cron", minute="*/5")  # every 5 mins
+    scheduler.add_job(check_cat1_changes, args=[app], trigger="cron", minute="*/2")  # every 2 mins
     scheduler.start()
     logging.info("Scheduler started")
 
