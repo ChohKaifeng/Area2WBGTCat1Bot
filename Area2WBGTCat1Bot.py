@@ -217,7 +217,7 @@ def fetch_cat1_sector17():
                     block_end = sgt.localize(block_end_naive)
 
                     if block_start <= sgt_now <= block_end:
-                        if last_cat1_range and block_start == last_cat1_range[0] and block_end > last_cat1_range[1]:
+                        if last_cat1_range and block_start <= last_cat1_range[1] and block_end > last_cat1_range[1]:
                             msg = (
                                 f"⚠️ *CAT 1 Extended:*\n"
                                 f"Sector 17 CAT 1 timing extended till {end}. "
