@@ -1,6 +1,7 @@
 import sqlite3
 import os
 import json
+from datetime import datetime
 
 DB_PATH = "data/data.db"
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
@@ -45,15 +46,32 @@ def get_all_subscribers():
         return {row[0] for row in cursor.fetchall()}
 
 # === State Logic ===
+def default_serializer(obj):
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    return str(obj)
+
+def try_parse_datetime(obj):
+    # Try to decode a list of 2 datetime strings into a tuple of datetime
+    if isinstance(obj, list) and len(obj) == 2:
+        try:
+            return tuple(datetime.fromisoformat(x) for x in obj)
+        except Exception:
+            pass
+    return obj
+
 def get_state(key):
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT value FROM state WHERE key = ?", (key,))
         row = cursor.fetchone()
-        return json.loads(row[0]) if row else None
+        if row:
+            value = json.loads(row[0])
+            return try_parse_datetime(value)
+        return None
 
 def set_state(key, value):
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
-        cursor.execute("REPLACE INTO state (key, value) VALUES (?, ?)", (key, json.dumps(value)))
+        cursor.execute("REPLACE INTO state (key, value) VALUES (?, ?)", (key, json.dumps(value, default=default_serializer)))
         conn.commit()
