@@ -42,6 +42,7 @@ init_state_db()
 last_zone = get_state("last_zone")
 last_cat1_status = get_state("last_cat1_status")
 last_cat1_range = parse_cat1_range()
+last_sent_wbgt_time = None
 
 if last_zone is None:
     last_zone = "Green"
