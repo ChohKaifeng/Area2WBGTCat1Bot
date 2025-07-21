@@ -1,11 +1,12 @@
 import os, re, asyncio, logging, threading, requests, nest_asyncio
+
 from datetime import datetime, timedelta, timezone as dt_timezone
+
 from flask import Flask
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from pytz import timezone
 from functools import lru_cache
-from dateutil.parser import isoparse
 
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
@@ -19,30 +20,12 @@ load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 WBGT_STATION_ID = "S106"  # Pulau Ubin
 
-# === Helpers for CAT1 datetime serialization ===
-def parse_cat1_range():
-    raw = get_state("last_cat1_range")
-    if raw:
-        try:
-            return tuple(isoparse(ts) for ts in raw)
-        except Exception as e:
-            logging.warning(f"Failed to parse CAT1 range: {e}")
-            return None
-    return None
-
-def store_cat1_range(start_dt, end_dt):
-    try:
-        set_state("last_cat1_range", (start_dt.isoformat(), end_dt.isoformat()))
-    except Exception as e:
-        logging.error(f"Failed to store CAT1 datetime range: {e}")
-
 # === State Trackers ===
 init_db()
 init_state_db()
 last_zone = get_state("last_zone")
 last_cat1_status = get_state("last_cat1_status")
-last_cat1_range = parse_cat1_range()
-last_sent_wbgt_time = None
+last_cat1_range = get_state("last_cat1_range")
 
 if last_zone is None:
     last_zone = "Green"
@@ -53,7 +36,8 @@ if last_cat1_status is None:
     set_state("last_cat1_status", last_cat1_status)
 
 if last_cat1_range is None:
-    set_state("last_cat1_range", None)
+    last_cat1_range = None
+    set_state("last_cat1_range", last_cat1_range)
 
 # === Logging ===
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -195,7 +179,7 @@ def get_wbgt_advisory(wbgt):
 
 # === CAT 1 Forecast ===
 def fetch_cat1_sector17():
-    last_cat1_range = parse_cat1_range()
+    last_cat1_range = get_state("last_cat1_range")
 
     try:
         resp = requests.get('https://t.me/s/Lightningrisk', timeout=10)
@@ -245,7 +229,7 @@ def fetch_cat1_sector17():
                                 f"Sector 17 currently under CAT 1 ({start}–{end}). "
                                 f"Head to the nearest shelter!"
                             )
-                        store_cat1_range(block_start, block_end)
+                        set_state("last_cat1_range", (block_start, block_end))
                         set_state("last_cat1_status", "active")
                         return "active", msg
 
@@ -257,7 +241,7 @@ def fetch_cat1_sector17():
                                     f"Sector 17 CAT 1 duration extended till {end}. "
                                     f"Stay sheltered until further notice."
                                 )
-                                store_cat1_range(block_start, block_end)
+                                set_state("last_cat1_range", (block_start, block_end))
                                 set_state("last_cat1_status", "active")
                                 return "active", msg
                             else:
@@ -268,7 +252,7 @@ def fetch_cat1_sector17():
                                 f"Sector 17 expected to enter CAT 1 from {start}–{end}. "
                                 f"Prepare to head to shelter."
                             )
-                            store_cat1_range(block_start, block_end)
+                            set_state("last_cat1_range", (block_start, block_end))
                             set_state("last_cat1_status", "active")
                             return "active", msg
 
@@ -339,7 +323,7 @@ async def broadcast_message(app, text):
 
 # === Scheduled Tasks ===
 async def scheduled_update(app):
-    global last_cat1_range, last_sent_wbgt_time
+    global last_cat1_range
 
     logging.info("Running scheduled update")
 
@@ -353,49 +337,22 @@ async def scheduled_update(app):
 
     msg = generate_message(wbgt_data, cat1_status)
     await broadcast_message(app, msg)
-    last_sent_wbgt_time = datetime.now(timezone("Asia/Singapore"))
 
-async def check_wbgt_changes(app):
-    global last_zone
+async def check_for_changes(app):
+    global last_zone, last_cat1_status, last_cat1_range
 
     loop = asyncio.get_event_loop()
-    wbgt_data = await loop.run_in_executor(None, calculate_wbgt)
+    wbgt_task = loop.run_in_executor(None, calculate_wbgt)
+    cat1_task = loop.run_in_executor(None, fetch_cat1_sector17)
+    wbgt_data, cat1_status = await asyncio.gather(wbgt_task, cat1_task)
+
     if not wbgt_data:
         return
 
     current_zone = get_wbgt_zone(wbgt_data["value"])
-
-    if last_zone is None:
-        last_zone = current_zone
-        set_state("last_zone", last_zone)
-        return
-
-    if current_zone != last_zone:
-        wbgt_time = datetime.strptime(wbgt_data["timestamp"], "%Y-%m-%dT%H:%M:%S%z").astimezone(timezone("Asia/Singapore"))
-        wbgt = wbgt_data["value"]
-        advisory = get_wbgt_advisory(wbgt)
-
-        msg = (
-            "*🚨 Immediate Update Detected*\n"
-            f"*WBGT STATUS (as of {wbgt_time.strftime('%H:%M')} Hours)*\n"
-            f"*🌡️ Temperature:* {wbgt:.1f}°C ({advisory[0]})\n"
-            f"*🧑‍🔧 Work-Rest Cycle:* {advisory[1]}\n"
-            f"*💧 Advisory:* {advisory[2]}"
-        )
-
-        await broadcast_message(app, msg)
-        last_zone = current_zone
-        set_state("last_zone", last_zone)
-
-async def check_cat1_changes(app):
-    global last_cat1_status, last_cat1_range
-
-    loop = asyncio.get_event_loop()
-    cat1_status = await loop.run_in_executor(None, fetch_cat1_sector17)
-
     current_cat1 = cat1_status[0]
-    new_cat1_range = last_cat1_range
 
+    new_cat1_range = last_cat1_range
     if current_cat1 == "active":
         sgt = timezone("Asia/Singapore")
         sgt_now = datetime.now(sgt)
@@ -420,29 +377,47 @@ async def check_cat1_changes(app):
                     logging.warning(f"Unable to parse extended CAT 1 time: {e}")
                 break
 
-    if last_cat1_status is None:
+    if last_zone is None or last_cat1_status is None:
+        last_zone = current_zone
         last_cat1_status = current_cat1
         last_cat1_range = new_cat1_range
+        set_state("last_zone", last_zone)
         set_state("last_cat1_status", last_cat1_status)
-        store_cat1_range(*last_cat1_range)
+        set_state("last_cat1_range", last_cat1_range)
         return
 
+    zone_changed = current_zone != last_zone
     cat1_changed = (
         current_cat1 != last_cat1_status or
         (current_cat1 == "active" and last_cat1_range and new_cat1_range and new_cat1_range[1] > last_cat1_range[1])
     )
 
-    if cat1_changed:
-        msg = (
-            "*🚨 Immediate Update Detected*\n"
-            f"\n*CAT 1 STATUS*\n{cat1_status[1]}"
-        )
+    if zone_changed or cat1_changed:
+        msg_parts = ["*🚨 Immediate Update Detected*"]
 
+        if zone_changed:
+            wbgt_time = datetime.strptime(wbgt_data["timestamp"], "%Y-%m-%dT%H:%M:%S%z").astimezone(timezone("Asia/Singapore"))
+            wbgt = wbgt_data["value"]
+            advisory = get_wbgt_advisory(wbgt)
+            msg_parts.append(
+                f"*WBGT STATUS (as of {wbgt_time.strftime('%H:%M')} Hours)*\n"
+                f"*🌡️ Temperature:* {wbgt:.1f}°C ({advisory[0]})\n"
+                f"*🧑‍🔧 Work-Rest Cycle:* {advisory[1]}\n"
+                f"*💧 Advisory:* {advisory[2]}\n"
+            )
+
+        if cat1_changed:
+            msg_parts.append(f"\n*CAT 1 STATUS*\n{cat1_status[1]}")
+
+        msg = "\n".join(msg_parts)
         await broadcast_message(app, msg)
+
+        last_zone = current_zone
         last_cat1_status = current_cat1
         last_cat1_range = new_cat1_range
+        set_state("last_zone", last_zone)
         set_state("last_cat1_status", last_cat1_status)
-        store_cat1_range(*last_cat1_range)
+        set_state("last_cat1_range", last_cat1_range)
 
 # === Telegram Commands ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -557,19 +532,8 @@ async def heat_injury(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # === Scheduler Setup ===
 scheduler = AsyncIOScheduler()
 async def post_init(app):
-    def skip_if_recent(task_func, interval_seconds, *args):
-        async def wrapper():
-            global last_sent_wbgt_time
-            now = datetime.now(timezone("Asia/Singapore"))
-            if last_sent_wbgt_time and (now - last_sent_wbgt_time).total_seconds() < interval_seconds:
-                logging.info(f"⏩ Skipping {task_func.__name__} – last WBGT sent {(now - last_sent_wbgt_time).seconds}s ago")
-                return
-            await task_func(*args)
-        return wrapper
-
-    scheduler.add_job(scheduled_update, args=[app], trigger="cron", minute="5,25,45")
-    scheduler.add_job(skip_if_recent(check_wbgt_changes, 120, app), trigger="cron", minute="*/2")
-    scheduler.add_job(check_cat1_changes, args=[app], trigger="cron", minute="*/2")
+    scheduler.add_job(scheduled_update, args=[app], trigger="cron", minute="*/10")
+    scheduler.add_job(check_for_changes, args=[app], trigger="cron", minute="2-59/2")
     scheduler.start()
     logging.info("Scheduler started")
 
