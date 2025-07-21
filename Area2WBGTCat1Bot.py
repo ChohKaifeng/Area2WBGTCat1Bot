@@ -424,7 +424,7 @@ async def check_cat1_changes(app):
         last_cat1_status = current_cat1
         last_cat1_range = new_cat1_range
         set_state("last_cat1_status", last_cat1_status)
-        set_state("last_cat1_range", last_cat1_range)
+        store_cat1_range(*last_cat1_range)
         return
 
     cat1_changed = (
@@ -442,7 +442,7 @@ async def check_cat1_changes(app):
         last_cat1_status = current_cat1
         last_cat1_range = new_cat1_range
         set_state("last_cat1_status", last_cat1_status)
-        set_state("last_cat1_range", last_cat1_range)
+        store_cat1_range(*last_cat1_range)
 
 # === Telegram Commands ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
